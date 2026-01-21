@@ -8,6 +8,7 @@ import Link from "next/link";
 import LoginButton from "@/components/auth/LoginButton";
 import { api } from "@/lib/api";
 import { useUserStore } from "@/store/useUserStore";
+import { type GameSession } from "@/types";
 
 // Floating hearts decoration
 const FloatingHearts = () => {
@@ -116,10 +117,29 @@ export default function Home() {
   const { user, setUser, setLoading, isHydrated, clearUser } = useUserStore();
   const [isInitializing, setIsInitializing] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [activeGame, setActiveGame] = useState<GameSession | null>(null);
+  const [loadingGames, setLoadingGames] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const loadActiveGame = async () => {
+      if (!user?.id) return;
+      setLoadingGames(true);
+      try {
+        const response = await api.get(`/games?user_id=${user.id}`);
+        const playingGame = response.data.find((g: GameSession) => g.status === "playing");
+        setActiveGame(playingGame || null);
+      } catch (error) {
+        console.error("Failed to load games:", error);
+      } finally {
+        setLoadingGames(false);
+      }
+    };
+    loadActiveGame();
+  }, [user?.id]);
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -154,6 +174,12 @@ export default function Home() {
       } else {
         router.push("/characters");
       }
+    }
+  };
+
+  const handleContinue = () => {
+    if (activeGame) {
+      router.push(`/game/${activeGame.id}`);
     }
   };
 
@@ -212,15 +238,41 @@ export default function Home() {
               <p className="text-gray-700">
                 환영합니다, {session.user?.name}님!
               </p>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleStart}
-                disabled={!user}
-                className="px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-full text-xl font-semibold shadow-lg hover:shadow-xl transition-all disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed"
-              >
-                {!user ? "로딩 중..." : user.mbti ? "게임 시작하기" : "시작하기"}
-              </motion.button>
+              {loadingGames ? (
+                <div className="flex justify-center">
+                  <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent"></div>
+                </div>
+              ) : activeGame ? (
+                <div className="space-y-3">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleContinue}
+                    className="px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-full text-xl font-semibold shadow-lg hover:shadow-xl transition-all w-full"
+                  >
+                    이어하기 (Scene {activeGame.current_scene}/10)
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={handleStart}
+                    disabled={!user}
+                    className="px-6 py-3 bg-white text-primary border-2 border-primary rounded-full font-medium hover:bg-primary/5 transition-all w-full"
+                  >
+                    새 게임 시작
+                  </motion.button>
+                </div>
+              ) : (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleStart}
+                  disabled={!user}
+                  className="px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-full text-xl font-semibold shadow-lg hover:shadow-xl transition-all disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed"
+                >
+                  {!user ? "로딩 중..." : user.mbti ? "게임 시작하기" : "시작하기"}
+                </motion.button>
+              )}
               <div className="flex justify-center gap-4 pt-2">
                 <Link
                   href="/mypage"

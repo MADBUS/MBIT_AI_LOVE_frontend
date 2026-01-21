@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { api } from "@/lib/api";
 import { useUserStore } from "@/store/useUserStore";
-import { MBTI_TYPES } from "@/types";
+import { MBTI_TYPES, STYLE_OPTIONS, type GameSession } from "@/types";
 import Header from "@/components/layout/Header";
 
 export default function MyPage() {
@@ -17,10 +17,28 @@ export default function MyPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [games, setGames] = useState<GameSession[]>([]);
+  const [loadingGames, setLoadingGames] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const loadGames = async () => {
+      if (!user?.id) return;
+      setLoadingGames(true);
+      try {
+        const response = await api.get(`/games?user_id=${user.id}`);
+        setGames(response.data);
+      } catch (error) {
+        console.error("Failed to load games:", error);
+      } finally {
+        setLoadingGames(false);
+      }
+    };
+    loadGames();
+  }, [user?.id]);
 
   useEffect(() => {
     if (user?.mbti) {
@@ -150,6 +168,62 @@ export default function MyPage() {
                   <span className="text-2xl font-bold text-primary">
                     {user?.mbti || "미설정"}
                   </span>
+                </div>
+              )}
+            </div>
+
+            {/* Game List Section */}
+            <div className="mb-8">
+              <h2 className="text-lg font-medium text-gray-700 mb-4">내 게임</h2>
+              {loadingGames ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent"></div>
+                </div>
+              ) : games.length === 0 ? (
+                <div className="bg-gray-50 rounded-xl p-6 text-center text-gray-500">
+                  진행 중인 게임이 없습니다
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {games.map((game) => (
+                    <motion.div
+                      key={game.id}
+                      whileHover={{ scale: 1.01 }}
+                      className="bg-gray-50 rounded-xl p-4 cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => router.push(`/game/${game.id}`)}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="font-medium text-gray-800">
+                            {game.character_settings ? (
+                              <>
+                                {STYLE_OPTIONS.find(s => s.value === game.character_settings?.style)?.label || game.character_settings.style}
+                                {" "}
+                                ({game.character_settings.mbti})
+                              </>
+                            ) : (
+                              "캐릭터 미설정"
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            Scene {game.current_scene}/10 | 호감도 {game.affection}%
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            game.status === "playing"
+                              ? "bg-green-100 text-green-700"
+                              : game.status === "happy_ending"
+                              ? "bg-pink-100 text-pink-700"
+                              : "bg-gray-200 text-gray-600"
+                          }`}>
+                            {game.status === "playing" ? "진행중" : game.status === "happy_ending" ? "해피엔딩" : "배드엔딩"}
+                          </span>
+                          <span className="text-primary font-medium">이어하기 &rarr;</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
               )}
             </div>

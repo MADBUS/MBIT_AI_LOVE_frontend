@@ -27,16 +27,19 @@ export interface CharacterSettingCreate {
   art_style: "anime" | "realistic" | "watercolor";
 }
 
-// Game Session types
+// Game Session types (from GET /api/games)
 export interface GameSession {
   id: string;
-  user_id: string;
+  character_id?: string | null;
+  character_name?: string | null;
+  character_type?: string | null;
   affection: number;
   current_scene: number;
   status: "playing" | "happy_ending" | "sad_ending";
   save_slot: number;
   created_at: string;
-  character_setting?: CharacterSetting;
+  updated_at?: string;
+  character_settings?: CharacterSetting | null;
 }
 
 // MBTI types
