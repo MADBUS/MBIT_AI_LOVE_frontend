@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import AffectionGauge from "@/components/game/AffectionGauge";
 import ChoiceButton from "@/components/game/ChoiceButton";
 import EndingScreen from "@/components/game/EndingScreen";
+import CharacterExpression, { getExpressionFromDelta } from "@/components/game/CharacterExpression";
 
 interface Scene {
   scene_number: number;
@@ -15,6 +16,14 @@ interface Scene {
   choices: { id: number; text: string; delta: number }[];
   affection: number;
   status: string;
+}
+
+interface SelectResponse {
+  new_affection: number;
+  next_scene: number;
+  status: string;
+  expression_type: string;
+  expression_image_url: string | null;
 }
 
 export default function GamePage() {
@@ -26,6 +35,8 @@ export default function GamePage() {
   const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState(false);
   const [affectionChange, setAffectionChange] = useState<number | null>(null);
+  const [expressionImageUrl, setExpressionImageUrl] = useState<string | null>(null);
+  const [currentExpression, setCurrentExpression] = useState<string>("neutral");
 
   useEffect(() => {
     loadScene();
@@ -49,11 +60,20 @@ export default function GamePage() {
     setSelecting(true);
     setAffectionChange(delta);
 
+    // delta에 따라 expression_type 결정
+    const expressionType = getExpressionFromDelta(delta);
+    setCurrentExpression(expressionType);
+
     try {
-      const response = await api.post(`/games/${sessionId}/select`, {
-        choice_index: choiceIndex,
+      const response = await api.post<SelectResponse>(`/games/${sessionId}/select`, {
         affection_delta: delta,
+        expression_type: expressionType,
       });
+
+      // 표정 이미지 업데이트
+      if (response.data.expression_image_url) {
+        setExpressionImageUrl(response.data.expression_image_url);
+      }
 
       // 잠시 대기 후 다음 씬 로드
       setTimeout(() => {
@@ -66,7 +86,7 @@ export default function GamePage() {
           );
         }
         setSelecting(false);
-      }, 1000);
+      }, 1500);
     } catch (error) {
       console.error("Failed to select choice:", error);
       setSelecting(false);
@@ -117,20 +137,14 @@ export default function GamePage() {
           Scene {scene.scene_number} / 10
         </div>
 
-        {/* 이미지 */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="relative aspect-[4/3] bg-gray-200 rounded-2xl overflow-hidden mb-6 shadow-lg"
-        >
-          {scene.image_url && (
-            <img
-              src={scene.image_url}
-              alt="Scene"
-              className="w-full h-full object-cover"
-            />
-          )}
-        </motion.div>
+        {/* 캐릭터 표정 이미지 */}
+        <div className="mb-6">
+          <CharacterExpression
+            imageUrl={expressionImageUrl || scene.image_url}
+            expressionType={currentExpression}
+            isTransitioning={selecting}
+          />
+        </div>
 
         {/* 대사 */}
         <motion.div
