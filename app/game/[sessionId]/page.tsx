@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import AffectionGauge from "@/components/game/AffectionGauge";
 import ChoiceButton from "@/components/game/ChoiceButton";
 import EndingScreen from "@/components/game/EndingScreen";
-import CharacterExpression, { getExpressionFromDelta } from "@/components/game/CharacterExpression";
+import CharacterExpression from "@/components/game/CharacterExpression";
 import CharacterVideoPlayer from "@/components/game/CharacterVideoPlayer";
 import HeartMinigame from "@/components/game/HeartMinigame";
 import SpecialEventModal from "@/components/game/SpecialEventModal";
@@ -16,7 +16,7 @@ interface Scene {
   scene_number: number;
   image_url: string | null;
   dialogue: string;
-  choices: { id: number; text: string; delta: number }[];
+  choices: { id: number; text: string; delta: number; expression: string }[];
   affection: number;
   status: string;
 }
@@ -200,14 +200,14 @@ export default function GamePage() {
     setEventData(null);
   };
 
-  const handleChoice = async (choiceIndex: number, delta: number) => {
+  const handleChoice = async (choiceIndex: number, delta: number, expression: string) => {
     if (selecting || !scene) return;
 
     setSelecting(true);
     setAffectionChange(delta);
 
-    // delta에 따라 expression_type 결정
-    const expressionType = getExpressionFromDelta(delta);
+    // 선택지에서 제공된 expression 사용
+    const expressionType = expression || "neutral";
     setCurrentExpression(expressionType);
 
     // 해당 표정의 비디오/이미지 URL 설정
@@ -375,7 +375,7 @@ export default function GamePage() {
                 >
                   <ChoiceButton
                     text={choice.text}
-                    onClick={() => handleChoice(index, choice.delta)}
+                    onClick={() => handleChoice(index, choice.delta, choice.expression)}
                     disabled={selecting || isTransitioning}
                   />
                 </motion.div>

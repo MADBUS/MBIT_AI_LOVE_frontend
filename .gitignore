@@ -50,3 +50,6 @@ next-env.d.ts
 # Cache
 .cache/
 .eslintcache
+
+# Visual Studio
+.vs/
