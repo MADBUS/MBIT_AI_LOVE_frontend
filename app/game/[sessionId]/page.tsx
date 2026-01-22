@@ -8,6 +8,8 @@ import AffectionGauge from "@/components/game/AffectionGauge";
 import ChoiceButton from "@/components/game/ChoiceButton";
 import EndingScreen from "@/components/game/EndingScreen";
 import CharacterExpression, { getExpressionFromDelta } from "@/components/game/CharacterExpression";
+import HeartMinigame from "@/components/game/HeartMinigame";
+import SpecialEventModal from "@/components/game/SpecialEventModal";
 
 interface Scene {
   scene_number: number;
@@ -26,6 +28,19 @@ interface SelectResponse {
   expression_image_url: string | null;
 }
 
+interface SpecialEventResponse {
+  is_special_event: boolean;
+  special_image_url: string | null;
+  event_description: string | null;
+  show_minigame: boolean;
+}
+
+interface MinigameResultResponse {
+  affection_change: number;
+  new_affection: number;
+  message: string;
+}
+
 export default function GamePage() {
   const params = useParams();
   const router = useRouter();
@@ -38,6 +53,15 @@ export default function GamePage() {
   const [expressionImageUrl, setExpressionImageUrl] = useState<string | null>(null);
   const [currentExpression, setCurrentExpression] = useState<string>("neutral");
 
+  // 특별 이벤트 관련 상태
+  const [showMinigame, setShowMinigame] = useState(false);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [eventData, setEventData] = useState<{
+    imageUrl: string;
+    description: string;
+    affectionChange: number;
+  } | null>(null);
+
   useEffect(() => {
     loadScene();
   }, [sessionId]);
@@ -46,12 +70,82 @@ export default function GamePage() {
     try {
       setLoading(true);
       const response = await api.post(`/scenes/${sessionId}/generate`);
+      console.log("[GamePage] Scene loaded:", response.data);
+      console.log("[GamePage] image_url:", response.data.image_url);
       setScene(response.data);
+
+      // 씬 로드 후 특별 이벤트 체크
+      await checkSpecialEvent(response.data.scene_number);
     } catch (error) {
       console.error("Failed to load scene:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // 특별 이벤트 체크
+  const checkSpecialEvent = async (sceneNumber: number) => {
+    try {
+      const response = await api.post<SpecialEventResponse>(
+        `/scenes/${sessionId}/check-event`
+      );
+      console.log("[GamePage] Special event check:", response.data);
+
+      if (response.data.is_special_event && response.data.show_minigame) {
+        // 이벤트 데이터 저장
+        setEventData({
+          imageUrl: response.data.special_image_url || "",
+          description: response.data.event_description || "특별 이벤트",
+          affectionChange: 0,
+        });
+        // 미니게임 표시
+        setShowMinigame(true);
+      }
+    } catch (error) {
+      console.error("Failed to check special event:", error);
+    }
+  };
+
+  // 미니게임 완료 처리
+  const handleMinigameComplete = async (success: boolean) => {
+    try {
+      const response = await api.post<MinigameResultResponse>(
+        `/scenes/${sessionId}/minigame-result`,
+        { success }
+      );
+      console.log("[GamePage] Minigame result:", response.data);
+
+      // 호감도 업데이트
+      if (scene) {
+        setScene({
+          ...scene,
+          affection: response.data.new_affection,
+        });
+      }
+
+      // 이벤트 데이터 업데이트
+      if (eventData) {
+        setEventData({
+          ...eventData,
+          affectionChange: response.data.affection_change,
+        });
+      }
+
+      // 미니게임 닫고 잠시 후 이벤트 모달 표시
+      setTimeout(() => {
+        setShowMinigame(false);
+        setShowEventModal(true);
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to submit minigame result:", error);
+      setShowMinigame(false);
+    }
+  };
+
+  // 이벤트 모달 닫기
+  const handleEventModalClose = () => {
+    setShowEventModal(false);
+    setEventData(null);
   };
 
   const handleChoice = async (choiceIndex: number, delta: number) => {
@@ -125,6 +219,26 @@ export default function GamePage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-pink-50 to-purple-50 py-8 px-4">
+      {/* 미니게임 */}
+      {showMinigame && (
+        <HeartMinigame
+          onComplete={handleMinigameComplete}
+          targetCount={10}
+          timeLimit={5}
+        />
+      )}
+
+      {/* 특별 이벤트 모달 */}
+      {eventData && (
+        <SpecialEventModal
+          isOpen={showEventModal}
+          imageUrl={eventData.imageUrl}
+          eventDescription={eventData.description}
+          affectionChange={eventData.affectionChange}
+          onClose={handleEventModalClose}
+        />
+      )}
+
       <div className="max-w-2xl mx-auto">
         {/* 호감도 게이지 */}
         <AffectionGauge
@@ -132,9 +246,9 @@ export default function GamePage() {
           change={affectionChange}
         />
 
-        {/* 씬 번호 */}
+        {/* 턴 카운트 */}
         <div className="text-center text-gray-500 mb-4">
-          Scene {scene.scene_number} / 10
+          Turn {scene.scene_number}
         </div>
 
         {/* 캐릭터 표정 이미지 */}
