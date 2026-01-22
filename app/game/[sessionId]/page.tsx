@@ -62,24 +62,36 @@ export default function GamePage() {
     affectionChange: number;
   } | null>(null);
 
+  // 씬 전환 중 상태 (로딩 화면 없이 부드러운 전환)
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
   useEffect(() => {
-    loadScene();
+    loadScene(true); // 최초 로드시에만 로딩 화면 표시
   }, [sessionId]);
 
-  const loadScene = async () => {
+  const loadScene = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      } else {
+        setIsTransitioning(true);
+      }
       const response = await api.post(`/scenes/${sessionId}/generate`);
       console.log("[GamePage] Scene loaded:", response.data);
       console.log("[GamePage] image_url:", response.data.image_url);
       setScene(response.data);
+      setExpressionImageUrl(null); // 새 씬에서는 기본 이미지 사용
+      setCurrentExpression("neutral"); // 표정 초기화
 
       // 씬 로드 후 특별 이벤트 체크
       await checkSpecialEvent(response.data.scene_number);
     } catch (error) {
       console.error("Failed to load scene:", error);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
+      setIsTransitioning(false);
     }
   };
 
@@ -169,11 +181,11 @@ export default function GamePage() {
         setExpressionImageUrl(response.data.expression_image_url);
       }
 
-      // 잠시 대기 후 다음 씬 로드
+      // 잠시 대기 후 다음 씬 로드 (로딩 화면 없이)
       setTimeout(() => {
         setAffectionChange(null);
         if (response.data.status === "playing") {
-          loadScene();
+          loadScene(false); // 로딩 화면 없이 다음 씬 로드
         } else {
           setScene((prev) =>
             prev ? { ...prev, status: response.data.status, affection: response.data.new_affection } : null
@@ -249,47 +261,58 @@ export default function GamePage() {
         {/* 턴 카운트 */}
         <div className="text-center text-gray-500 mb-4">
           Turn {scene.scene_number}
+          {isTransitioning && (
+            <span className="ml-2 inline-block animate-pulse">...</span>
+          )}
         </div>
 
-        {/* 캐릭터 표정 이미지 */}
-        <div className="mb-6">
-          <CharacterExpression
-            imageUrl={expressionImageUrl || scene.image_url}
-            expressionType={currentExpression}
-            isTransitioning={selecting}
-          />
-        </div>
-
-        {/* 대사 */}
+        {/* 씬 전환 시 부드러운 페이드 효과 */}
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-6 mb-6 shadow-md"
+          animate={{ opacity: isTransitioning ? 0.6 : 1 }}
+          transition={{ duration: 0.3 }}
         >
-          <p className="text-lg text-gray-800 leading-relaxed">
-            {scene.dialogue}
-          </p>
-        </motion.div>
+          {/* 캐릭터 표정 이미지 */}
+          <div className="mb-6">
+            <CharacterExpression
+              imageUrl={expressionImageUrl || scene.image_url}
+              expressionType={currentExpression}
+              isTransitioning={selecting}
+            />
+          </div>
 
-        {/* 선택지 */}
-        <div className="space-y-3">
-          <AnimatePresence>
-            {scene.choices.map((choice, index) => (
-              <motion.div
-                key={choice.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <ChoiceButton
-                  text={choice.text}
-                  onClick={() => handleChoice(index, choice.delta)}
-                  disabled={selecting}
-                />
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+          {/* 대사 */}
+          <motion.div
+            key={scene.scene_number}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl p-6 mb-6 shadow-md"
+          >
+            <p className="text-lg text-gray-800 leading-relaxed">
+              {scene.dialogue}
+            </p>
+          </motion.div>
+
+          {/* 선택지 */}
+          <div className="space-y-3">
+            <AnimatePresence mode="wait">
+              {scene.choices.map((choice, index) => (
+                <motion.div
+                  key={`${scene.scene_number}-${choice.id}`}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <ChoiceButton
+                    text={choice.text}
+                    onClick={() => handleChoice(index, choice.delta)}
+                    disabled={selecting || isTransitioning}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </motion.div>
       </div>
     </main>
   );
