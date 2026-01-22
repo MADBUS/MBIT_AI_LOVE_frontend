@@ -69,8 +69,15 @@ export default function CharactersPage() {
         art_style: settings.art_style as "anime" | "realistic" | "watercolor",
       };
 
+      // 1. Create character settings and game session
       const response = await api.post("/character_settings/", payload);
-      router.push(`/game/${response.data.id}`);
+      const sessionId = response.data.id;
+
+      // 2. Generate 6 expression images
+      await api.post(`/games/${sessionId}/generate-expressions`);
+
+      // 3. Navigate to game
+      router.push(`/game/${sessionId}`);
     } catch (error) {
       console.error("Failed to create game:", error);
     } finally {

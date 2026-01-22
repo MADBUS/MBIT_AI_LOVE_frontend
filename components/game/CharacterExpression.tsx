@@ -1,6 +1,10 @@
 "use client";
 
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+
+// 백엔드 API 기본 URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || "http://localhost:8000";
 
 interface CharacterExpressionProps {
   imageUrl: string | null;
@@ -13,28 +17,54 @@ export default function CharacterExpression({
   expressionType,
   isTransitioning = false,
 }: CharacterExpressionProps) {
+  const [imageError, setImageError] = useState(false);
+
+  // 이미지 URL에 백엔드 기본 URL 추가
+  const fullImageUrl = useMemo(() => {
+    if (!imageUrl) return null;
+    // 이미 http로 시작하면 그대로 사용
+    if (imageUrl.startsWith('http')) return imageUrl;
+    // /static으로 시작하면 백엔드 URL 추가
+    if (imageUrl.startsWith('/static')) return `${API_BASE_URL}${imageUrl}`;
+    return imageUrl;
+  }, [imageUrl]);
+
+  // Reset error state when imageUrl changes
+  useEffect(() => {
+    setImageError(false);
+    console.log("[CharacterExpression] imageUrl:", imageUrl);
+    console.log("[CharacterExpression] fullImageUrl:", fullImageUrl);
+  }, [imageUrl, fullImageUrl]);
+
   return (
     <div className="relative aspect-[4/3] bg-gradient-to-b from-pink-100 to-purple-100 rounded-2xl overflow-hidden shadow-lg">
       <AnimatePresence mode="wait">
         <motion.div
-          key={imageUrl || "placeholder"}
+          key={fullImageUrl || "placeholder"}
           initial={{ opacity: 0, scale: 1.05 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.3 }}
           className="w-full h-full"
         >
-          {imageUrl ? (
+          {fullImageUrl && !imageError ? (
             <img
-              src={imageUrl}
+              src={fullImageUrl}
               alt={`Character - ${expressionType}`}
               className={`w-full h-full object-cover transition-all duration-300 ${
                 isTransitioning ? "blur-sm" : ""
               }`}
+              onError={(e) => {
+                console.error("[CharacterExpression] Image load error:", imageUrl, e);
+                setImageError(true);
+              }}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="text-6xl animate-pulse">💕</div>
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-purple-200">
+              <div className="text-center">
+                <div className="text-8xl mb-4">💕</div>
+                <p className="text-gray-600 text-sm">캐릭터 이미지</p>
+              </div>
             </div>
           )}
         </motion.div>

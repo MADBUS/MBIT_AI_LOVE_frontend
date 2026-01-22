@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
@@ -8,6 +8,7 @@ import AffectionGauge from "@/components/game/AffectionGauge";
 import ChoiceButton from "@/components/game/ChoiceButton";
 import EndingScreen from "@/components/game/EndingScreen";
 import CharacterExpression, { getExpressionFromDelta } from "@/components/game/CharacterExpression";
+import CharacterVideoPlayer from "@/components/game/CharacterVideoPlayer";
 import HeartMinigame from "@/components/game/HeartMinigame";
 import SpecialEventModal from "@/components/game/SpecialEventModal";
 
@@ -26,6 +27,12 @@ interface SelectResponse {
   status: string;
   expression_type: string;
   expression_image_url: string | null;
+  expression_video_url: string | null;
+}
+
+interface ExpressionData {
+  image_url: string;
+  video_url: string | null;
 }
 
 interface SpecialEventResponse {
@@ -51,7 +58,12 @@ export default function GamePage() {
   const [selecting, setSelecting] = useState(false);
   const [affectionChange, setAffectionChange] = useState<number | null>(null);
   const [expressionImageUrl, setExpressionImageUrl] = useState<string | null>(null);
+  const [expressionVideoUrl, setExpressionVideoUrl] = useState<string | null>(null);
+  const [neutralVideoUrl, setNeutralVideoUrl] = useState<string | null>(null);
   const [currentExpression, setCurrentExpression] = useState<string>("neutral");
+  const [isPlayingEmotionVideo, setIsPlayingEmotionVideo] = useState(false);
+  const [expressions, setExpressions] = useState<Record<string, ExpressionData>>({});
+  const [expressionsLoading, setExpressionsLoading] = useState(true);
 
   // 특별 이벤트 관련 상태
   const [showMinigame, setShowMinigame] = useState(false);
@@ -65,8 +77,29 @@ export default function GamePage() {
   // 씬 전환 중 상태 (로딩 화면 없이 부드러운 전환)
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  useEffect(() => {
-    loadScene(true); // 최초 로드시에만 로딩 화면 표시
+  // 세션의 모든 표정 데이터 로드
+  const loadExpressions = useCallback(async () => {
+    try {
+      setExpressionsLoading(true);
+      const response = await api.get(`/games/${sessionId}/expressions`);
+      const expressionMap: Record<string, ExpressionData> = {};
+      for (const expr of response.data.expressions || []) {
+        expressionMap[expr.expression_type] = {
+          image_url: expr.image_url,
+          video_url: expr.video_url,
+        };
+      }
+      setExpressions(expressionMap);
+      // neutral 비디오 URL 설정
+      if (expressionMap.neutral?.video_url) {
+        setNeutralVideoUrl(expressionMap.neutral.video_url);
+      }
+      console.log("[GamePage] Expressions loaded:", expressionMap);
+    } catch (error) {
+      console.error("Failed to load expressions:", error);
+    } finally {
+      setExpressionsLoading(false);
+    }
   }, [sessionId]);
 
   const loadScene = async (showLoading = false) => {
@@ -81,7 +114,9 @@ export default function GamePage() {
       console.log("[GamePage] image_url:", response.data.image_url);
       setScene(response.data);
       setExpressionImageUrl(null); // 새 씬에서는 기본 이미지 사용
+      setExpressionVideoUrl(null); // 비디오 초기화
       setCurrentExpression("neutral"); // 표정 초기화
+      setIsPlayingEmotionVideo(false); // 감정 비디오 재생 상태 초기화
 
       // 씬 로드 후 특별 이벤트 체크
       await checkSpecialEvent(response.data.scene_number);
@@ -94,6 +129,11 @@ export default function GamePage() {
       setIsTransitioning(false);
     }
   };
+
+  useEffect(() => {
+    loadScene(true); // 최초 로드시에만 로딩 화면 표시
+    loadExpressions(); // 표정 데이터 로드
+  }, [sessionId, loadExpressions]);
 
   // 특별 이벤트 체크
   const checkSpecialEvent = async (sceneNumber: number) => {
@@ -170,20 +210,32 @@ export default function GamePage() {
     const expressionType = getExpressionFromDelta(delta);
     setCurrentExpression(expressionType);
 
+    // 해당 표정의 비디오/이미지 URL 설정
+    const expressionData = expressions[expressionType];
+    if (expressionData) {
+      setExpressionImageUrl(expressionData.image_url);
+      setExpressionVideoUrl(expressionData.video_url);
+      setIsPlayingEmotionVideo(true); // 감정 비디오 재생 시작
+    }
+
     try {
       const response = await api.post<SelectResponse>(`/games/${sessionId}/select`, {
         affection_delta: delta,
         expression_type: expressionType,
       });
 
-      // 표정 이미지 업데이트
+      // API 응답에서 표정 이미지/비디오 업데이트 (fallback)
       if (response.data.expression_image_url) {
         setExpressionImageUrl(response.data.expression_image_url);
       }
+      if (response.data.expression_video_url) {
+        setExpressionVideoUrl(response.data.expression_video_url);
+      }
 
-      // 잠시 대기 후 다음 씬 로드 (로딩 화면 없이)
+      // 비디오 재생 시간 + 여유 시간 후 다음 씬 로드
       setTimeout(() => {
         setAffectionChange(null);
+        setIsPlayingEmotionVideo(false); // 감정 비디오 재생 종료
         if (response.data.status === "playing") {
           loadScene(false); // 로딩 화면 없이 다음 씬 로드
         } else {
@@ -192,19 +244,33 @@ export default function GamePage() {
           );
         }
         setSelecting(false);
-      }, 1500);
+      }, 3000); // 비디오 재생 시간 (2-4초) + 여유
     } catch (error) {
       console.error("Failed to select choice:", error);
       setSelecting(false);
+      setIsPlayingEmotionVideo(false);
     }
   };
 
-  if (loading) {
+  // 감정 비디오 재생 완료 후 neutral로 복귀
+  const handleVideoEnd = useCallback(() => {
+    if (isPlayingEmotionVideo && currentExpression !== "neutral") {
+      setCurrentExpression("neutral");
+      if (expressions.neutral) {
+        setExpressionImageUrl(expressions.neutral.image_url);
+        setExpressionVideoUrl(expressions.neutral.video_url);
+      }
+    }
+  }, [isPlayingEmotionVideo, currentExpression, expressions]);
+
+  if (loading || expressionsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-50 to-purple-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-600">씬을 불러오는 중...</p>
+          <p className="text-gray-600">
+            {expressionsLoading ? "캐릭터 표정 불러오는 중..." : "씬을 불러오는 중..."}
+          </p>
         </div>
       </div>
     );
@@ -271,12 +337,16 @@ export default function GamePage() {
           animate={{ opacity: isTransitioning ? 0.6 : 1 }}
           transition={{ duration: 0.3 }}
         >
-          {/* 캐릭터 표정 이미지 */}
-          <div className="mb-6">
-            <CharacterExpression
-              imageUrl={expressionImageUrl || scene.image_url}
+          {/* 캐릭터 표정 애니메이션 (비디오 우선, 이미지 폴백) */}
+          <div className="mb-6 max-w-sm mx-auto">
+            <CharacterVideoPlayer
+              videoUrl={expressionVideoUrl || expressions[currentExpression]?.video_url || null}
+              imageUrl={expressionImageUrl || expressions[currentExpression]?.image_url || scene.image_url}
               expressionType={currentExpression}
-              isTransitioning={selecting}
+              isPlaying={true}
+              onVideoEnd={handleVideoEnd}
+              autoReturnToNeutral={isPlayingEmotionVideo && currentExpression !== "neutral"}
+              neutralVideoUrl={neutralVideoUrl}
             />
           </div>
 
