@@ -19,8 +19,8 @@ interface Heart {
 
 export default function HeartMinigame({
   onComplete,
-  targetCount = 10,
-  timeLimit = 5,
+  targetCount = 7,   // 기본 7개 (난이도 하향)
+  timeLimit = 8,     // 기본 8초 (시간 여유)
 }: HeartMinigameProps) {
   const [hearts, setHearts] = useState<Heart[]>([]);
   const [score, setScore] = useState(0);
@@ -34,8 +34,8 @@ export default function HeartMinigame({
       id: Date.now() + Math.random(),
       x: Math.random() * 80 + 10, // 10% ~ 90%
       y: -10,
-      size: Math.random() * 30 + 40, // 40px ~ 70px
-      speed: Math.random() * 2 + 3, // 3 ~ 5 seconds
+      size: Math.random() * 30 + 50, // 50px ~ 80px (더 큰 하트)
+      speed: Math.random() * 2 + 4,  // 4 ~ 6 seconds (더 느리게)
     };
     setHearts((prev) => [...prev, newHeart]);
   }, []);
@@ -82,13 +82,13 @@ export default function HeartMinigame({
     return () => clearInterval(timer);
   }, [gameStarted, gameEnded, score, targetCount, onComplete]);
 
-  // 하트 스폰
+  // 하트 스폰 (300ms마다 - 더 자주 생성)
   useEffect(() => {
     if (!gameStarted || gameEnded) return;
 
     const spawnInterval = setInterval(() => {
       spawnHeart();
-    }, 400);
+    }, 300);
 
     return () => clearInterval(spawnInterval);
   }, [gameStarted, gameEnded, spawnHeart]);

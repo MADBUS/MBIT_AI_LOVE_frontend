@@ -231,12 +231,12 @@ export default function GamePage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-pink-50 to-purple-50 py-8 px-4">
-      {/* 미니게임 */}
+      {/* 미니게임 (기본값: 8초 내 7개 터치) */}
       {showMinigame && (
         <HeartMinigame
           onComplete={handleMinigameComplete}
-          targetCount={10}
-          timeLimit={5}
+          targetCount={7}
+          timeLimit={8}
         />
       )}
 
