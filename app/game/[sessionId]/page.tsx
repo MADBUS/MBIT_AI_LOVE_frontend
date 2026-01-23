@@ -11,6 +11,7 @@ import CharacterExpression from "@/components/game/CharacterExpression";
 import CharacterVideoPlayer from "@/components/game/CharacterVideoPlayer";
 import HeartMinigame from "@/components/game/HeartMinigame";
 import SpecialEventModal from "@/components/game/SpecialEventModal";
+import PvPMatchingModal from "@/components/game/PvPMatchingModal";
 
 interface Scene {
   scene_number: number;
@@ -46,6 +47,7 @@ interface MinigameResultResponse {
   affection_change: number;
   new_affection: number;
   message: string;
+  show_event_scene: boolean;  // true only when minigame success
 }
 
 export default function GamePage() {
@@ -58,10 +60,7 @@ export default function GamePage() {
   const [selecting, setSelecting] = useState(false);
   const [affectionChange, setAffectionChange] = useState<number | null>(null);
   const [expressionImageUrl, setExpressionImageUrl] = useState<string | null>(null);
-  const [expressionVideoUrl, setExpressionVideoUrl] = useState<string | null>(null);
-  const [neutralVideoUrl, setNeutralVideoUrl] = useState<string | null>(null);
   const [currentExpression, setCurrentExpression] = useState<string>("neutral");
-  const [isPlayingEmotionVideo, setIsPlayingEmotionVideo] = useState(false);
   const [expressions, setExpressions] = useState<Record<string, ExpressionData>>({});
   const [expressionsLoading, setExpressionsLoading] = useState(true);
 
@@ -72,6 +71,13 @@ export default function GamePage() {
     imageUrl: string;
     description: string;
     affectionChange: number;
+  } | null>(null);
+
+  // PvP 매칭 관련 상태
+  const [showPvPMatching, setShowPvPMatching] = useState(false);
+  const [pendingEventData, setPendingEventData] = useState<{
+    imageUrl: string;
+    description: string;
   } | null>(null);
 
   // 씬 전환 중 상태 (로딩 화면 없이 부드러운 전환)
@@ -86,14 +92,10 @@ export default function GamePage() {
       for (const expr of response.data.expressions || []) {
         expressionMap[expr.expression_type] = {
           image_url: expr.image_url,
-          video_url: expr.video_url,
+          video_url: null,  // 비디오 비활성화
         };
       }
       setExpressions(expressionMap);
-      // neutral 비디오 URL 설정
-      if (expressionMap.neutral?.video_url) {
-        setNeutralVideoUrl(expressionMap.neutral.video_url);
-      }
       console.log("[GamePage] Expressions loaded:", expressionMap);
     } catch (error) {
       console.error("Failed to load expressions:", error);
@@ -114,9 +116,7 @@ export default function GamePage() {
       console.log("[GamePage] image_url:", response.data.image_url);
       setScene(response.data);
       setExpressionImageUrl(null); // 새 씬에서는 기본 이미지 사용
-      setExpressionVideoUrl(null); // 비디오 초기화
       setCurrentExpression("neutral"); // 표정 초기화
-      setIsPlayingEmotionVideo(false); // 감정 비디오 재생 상태 초기화
 
       // 씬 로드 후 특별 이벤트 체크
       await checkSpecialEvent(response.data.scene_number);
@@ -135,7 +135,7 @@ export default function GamePage() {
     loadExpressions(); // 표정 데이터 로드
   }, [sessionId, loadExpressions]);
 
-  // 특별 이벤트 체크
+  // 특별 이벤트 체크 - PvP 매칭 우선, 30초 타임아웃 시 솔로 미니게임
   const checkSpecialEvent = async (sceneNumber: number) => {
     try {
       const response = await api.post<SpecialEventResponse>(
@@ -144,18 +144,55 @@ export default function GamePage() {
       console.log("[GamePage] Special event check:", response.data);
 
       if (response.data.is_special_event && response.data.show_minigame) {
-        // 이벤트 데이터 저장
-        setEventData({
+        // 이벤트 데이터 임시 저장 (PvP 매칭 또는 솔로 이벤트용)
+        setPendingEventData({
           imageUrl: response.data.special_image_url || "",
           description: response.data.event_description || "특별 이벤트",
-          affectionChange: 0,
         });
-        // 미니게임 표시
-        setShowMinigame(true);
+        // PvP 매칭 모달 표시 (30초 타임아웃 시 솔로 미니게임으로 전환)
+        setShowPvPMatching(true);
       }
     } catch (error) {
       console.error("Failed to check special event:", error);
     }
+  };
+
+  // PvP 매칭 성공 처리
+  const handlePvPMatchSuccess = (opponentSessionId: string, finalBet: number) => {
+    console.log("[GamePage] PvP Match success:", opponentSessionId, finalBet);
+    setShowPvPMatching(false);
+    // TODO: PvP 대전 로직 구현
+    // 지금은 솔로 미니게임으로 전환
+    if (pendingEventData) {
+      setEventData({
+        imageUrl: pendingEventData.imageUrl,
+        description: "PvP 대전!",
+        affectionChange: 0,
+      });
+      setShowMinigame(true);
+    }
+  };
+
+  // PvP 매칭 타임아웃 처리 - 솔로 미니게임으로 전환
+  const handlePvPTimeout = () => {
+    console.log("[GamePage] PvP timeout - switching to solo minigame");
+    setShowPvPMatching(false);
+    if (pendingEventData) {
+      setEventData({
+        imageUrl: pendingEventData.imageUrl,
+        description: pendingEventData.description,
+        affectionChange: 0,
+      });
+      // 솔로 미니게임 표시
+      setShowMinigame(true);
+    }
+    setPendingEventData(null);
+  };
+
+  // PvP 매칭 취소/닫기
+  const handlePvPClose = () => {
+    setShowPvPMatching(false);
+    setPendingEventData(null);
   };
 
   // 미니게임 완료 처리
@@ -175,18 +212,24 @@ export default function GamePage() {
         });
       }
 
-      // 이벤트 데이터 업데이트
-      if (eventData) {
+      // 이벤트 데이터 업데이트 (승리 시에만)
+      if (eventData && response.data.show_event_scene) {
         setEventData({
           ...eventData,
           affectionChange: response.data.affection_change,
         });
       }
 
-      // 미니게임 닫고 잠시 후 이벤트 모달 표시
+      // 미니게임 닫고 잠시 후 처리
       setTimeout(() => {
         setShowMinigame(false);
-        setShowEventModal(true);
+        // 승리 시에만 이벤트 모달 표시
+        if (response.data.show_event_scene) {
+          setShowEventModal(true);
+        } else {
+          // 패배 시 이벤트 데이터 초기화
+          setEventData(null);
+        }
       }, 2000);
     } catch (error) {
       console.error("Failed to submit minigame result:", error);
@@ -210,12 +253,10 @@ export default function GamePage() {
     const expressionType = expression || "neutral";
     setCurrentExpression(expressionType);
 
-    // 해당 표정의 비디오/이미지 URL 설정
+    // 해당 표정의 이미지 URL 설정
     const expressionData = expressions[expressionType];
     if (expressionData) {
       setExpressionImageUrl(expressionData.image_url);
-      setExpressionVideoUrl(expressionData.video_url);
-      setIsPlayingEmotionVideo(true); // 감정 비디오 재생 시작
     }
 
     try {
@@ -224,18 +265,14 @@ export default function GamePage() {
         expression_type: expressionType,
       });
 
-      // API 응답에서 표정 이미지/비디오 업데이트 (fallback)
+      // API 응답에서 표정 이미지 업데이트 (fallback)
       if (response.data.expression_image_url) {
         setExpressionImageUrl(response.data.expression_image_url);
       }
-      if (response.data.expression_video_url) {
-        setExpressionVideoUrl(response.data.expression_video_url);
-      }
 
-      // 비디오 재생 시간 + 여유 시간 후 다음 씬 로드
+      // 표정 변화 표시 후 다음 씬 로드
       setTimeout(() => {
         setAffectionChange(null);
-        setIsPlayingEmotionVideo(false); // 감정 비디오 재생 종료
         if (response.data.status === "playing") {
           loadScene(false); // 로딩 화면 없이 다음 씬 로드
         } else {
@@ -244,24 +281,12 @@ export default function GamePage() {
           );
         }
         setSelecting(false);
-      }, 3000); // 비디오 재생 시간 (2-4초) + 여유
+      }, 1500); // 표정 변화 표시 시간
     } catch (error) {
       console.error("Failed to select choice:", error);
       setSelecting(false);
-      setIsPlayingEmotionVideo(false);
     }
   };
-
-  // 감정 비디오 재생 완료 후 neutral로 복귀
-  const handleVideoEnd = useCallback(() => {
-    if (isPlayingEmotionVideo && currentExpression !== "neutral") {
-      setCurrentExpression("neutral");
-      if (expressions.neutral) {
-        setExpressionImageUrl(expressions.neutral.image_url);
-        setExpressionVideoUrl(expressions.neutral.video_url);
-      }
-    }
-  }, [isPlayingEmotionVideo, currentExpression, expressions]);
 
   if (loading || expressionsLoading) {
     return (
@@ -297,6 +322,17 @@ export default function GamePage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-pink-50 to-purple-50 py-8 px-4">
+      {/* PvP 매칭 모달 (30초 타임아웃 시 솔로 미니게임 전환) */}
+      {showPvPMatching && (
+        <PvPMatchingModal
+          sessionId={sessionId}
+          currentAffection={scene.affection}
+          onMatchSuccess={handlePvPMatchSuccess}
+          onTimeout={handlePvPTimeout}
+          onClose={handlePvPClose}
+        />
+      )}
+
       {/* 미니게임 (기본값: 8초 내 7개 터치) */}
       {showMinigame && (
         <HeartMinigame
@@ -337,16 +373,12 @@ export default function GamePage() {
           animate={{ opacity: isTransitioning ? 0.6 : 1 }}
           transition={{ duration: 0.3 }}
         >
-          {/* 캐릭터 표정 애니메이션 (비디오 우선, 이미지 폴백) */}
+          {/* 캐릭터 표정 이미지 */}
           <div className="mb-6 max-w-sm mx-auto">
             <CharacterVideoPlayer
-              videoUrl={expressionVideoUrl || expressions[currentExpression]?.video_url || null}
+              videoUrl={null}
               imageUrl={expressionImageUrl || expressions[currentExpression]?.image_url || scene.image_url}
               expressionType={currentExpression}
-              isPlaying={true}
-              onVideoEnd={handleVideoEnd}
-              autoReturnToNeutral={isPlayingEmotionVideo && currentExpression !== "neutral"}
-              neutralVideoUrl={neutralVideoUrl}
             />
           </div>
 
@@ -364,7 +396,7 @@ export default function GamePage() {
 
           {/* 선택지 */}
           <div className="space-y-3">
-            <AnimatePresence mode="wait">
+            <AnimatePresence mode="sync">
               {scene.choices.map((choice, index) => (
                 <motion.div
                   key={`${scene.scene_number}-${choice.id}`}

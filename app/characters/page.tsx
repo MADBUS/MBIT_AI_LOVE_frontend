@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { api } from "@/lib/api";
@@ -35,6 +35,7 @@ export default function CharactersPage() {
   const [currentStep, setCurrentStep] = useState<Step>("gender");
   const [settings, setSettings] = useState<Partial<CharacterSettingCreate>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
 
   const currentStepIndex = STEPS.indexOf(currentStep);
 
@@ -60,6 +61,7 @@ export default function CharactersPage() {
     if (!user?.id) return;
 
     setIsSubmitting(true);
+    setLoadingMessage("캐릭터 설정을 저장하는 중...");
     try {
       const payload: CharacterSettingCreate = {
         user_id: user.id,
@@ -73,13 +75,16 @@ export default function CharactersPage() {
       const response = await api.post("/character_settings/", payload);
       const sessionId = response.data.id;
 
-      // 2. Generate 6 expression images
+      // 2. Generate 7 expression images
+      setLoadingMessage("AI가 캐릭터 표정을 그리는 중...");
       await api.post(`/games/${sessionId}/generate-expressions`);
 
       // 3. Navigate to game
+      setLoadingMessage("게임을 준비하는 중...");
       router.push(`/game/${sessionId}`);
     } catch (error) {
       console.error("Failed to create game:", error);
+      setLoadingMessage("");
     } finally {
       setIsSubmitting(false);
     }
@@ -102,14 +107,88 @@ export default function CharactersPage() {
     }
   };
 
+  // 세션이 없으면 홈으로 리다이렉트 (useEffect 사용하여 렌더링 중 setState 방지)
+  useEffect(() => {
+    if (session === null) {
+      router.push("/");
+    }
+  }, [session, router]);
+
+  // 세션 로딩 중이거나 세션이 없으면 로딩 표시
   if (!session) {
-    router.push("/");
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-50 to-purple-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600">로딩 중...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <>
       <Header />
+
+      {/* 로딩 오버레이 */}
+      <AnimatePresence>
+        {isSubmitting && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl"
+            >
+              {/* 애니메이션 아이콘 */}
+              <div className="relative w-24 h-24 mx-auto mb-6">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-0 rounded-full border-4 border-primary/30 border-t-primary"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <motion.span
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="text-4xl"
+                  >
+                    💕
+                  </motion.span>
+                </div>
+              </div>
+
+              {/* 로딩 메시지 */}
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                캐릭터 생성 중
+              </h3>
+              <p className="text-gray-600 mb-4">
+                {loadingMessage}
+              </p>
+
+              {/* 프로그레스 바 */}
+              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: "0%" }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: 30, ease: "linear" }}
+                  className="h-full bg-gradient-to-r from-pink-400 to-purple-400"
+                />
+              </div>
+
+              <p className="text-xs text-gray-400 mt-4">
+                AI가 7가지 표정을 그리고 있어요
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <main className="min-h-screen bg-gradient-to-b from-pink-50 to-purple-50 pt-20 pb-8 px-4">
         <div className="max-w-2xl mx-auto">
         {/* Progress Bar */}

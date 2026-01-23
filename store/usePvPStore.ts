@@ -175,14 +175,19 @@ export const usePvPStore = create<PvPState>((set, get) => ({
       }
     };
 
-    ws.onerror = (error) => {
-      console.error("[PvP] WebSocket error:", error);
-      set({ status: "error", error: "WebSocket 연결 오류가 발생했습니다." });
+    ws.onerror = () => {
+      // WebSocket 에러 발생 시 조용히 처리 (콘솔 에러 출력 안함)
+      // 솔로 미니게임으로 자동 전환됨
+      set({ status: "error", error: "서버 연결 실패" });
     };
 
     ws.onclose = () => {
-      console.log("[PvP] WebSocket disconnected");
-      set({ status: "disconnected", socket: null });
+      // 연결 종료 시 조용히 처리
+      const { status: currentStatus } = get();
+      // 이미 에러 상태가 아닌 경우에만 disconnected로 설정
+      if (currentStatus !== "error") {
+        set({ status: "disconnected", socket: null });
+      }
     };
 
     set({ socket: ws });
