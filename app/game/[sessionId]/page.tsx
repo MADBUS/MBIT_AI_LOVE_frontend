@@ -197,6 +197,7 @@ export default function GamePage() {
   const handlePvPGameEnd = async (won: boolean) => {
     console.log("[GamePage] PvP Game ended, won:", won);
     setShowPvPGame(false);
+    setIsTransitioning(true);  // 결과 처리 중 UI 전환 방지
 
     // PvP 베팅 금액 계산 (양쪽 중 높은 금액)
     const finalBet = Math.max(pvpBetAmount || 10, pvpOpponentBet || 10);
@@ -214,7 +215,36 @@ export default function GamePage() {
         }
       );
 
-      // 호감도 업데이트
+      console.log("[GamePage] PvP result:", response.data);
+
+      // 엔딩 체크 - 먼저 확인하고 즉시 이동
+      if (response.data.game_ended && response.data.ending_type) {
+        console.log("[GamePage] Game ended! Redirecting to ending:", response.data.ending_type);
+
+        // 캐릭터 뺏김/뺏음 알림 (엔딩 전에 표시)
+        if (response.data.character_stolen) {
+          if (won) {
+            alert("🏆 상대방의 캐릭터를 뺏었습니다! 마이페이지에서 확인하세요.");
+          } else {
+            alert("💔 호감도가 0이 되어 캐릭터를 뺏겼습니다...");
+          }
+        }
+
+        // 씬 상태 업데이트 (엔딩 화면 표시)
+        if (scene) {
+          setScene({
+            ...scene,
+            affection: response.data.new_affection,
+            status: response.data.ending_type,
+          });
+        }
+
+        // 엔딩 페이지로 즉시 이동
+        router.push(`/ending/${sessionId}?type=${response.data.ending_type}`);
+        return;
+      }
+
+      // 호감도 업데이트 (엔딩이 아닌 경우)
       if (scene) {
         setScene({
           ...scene,
@@ -222,15 +252,13 @@ export default function GamePage() {
         });
       }
 
-      // 엔딩 체크
-      if (response.data.game_ended && response.data.ending_type) {
-        // 캐릭터 뺏김 알림 (승리 + 상대방 캐릭터 뺏음)
-        if (response.data.character_stolen) {
+      // 캐릭터 뺏김/뺏음 알림 (엔딩이 아닌 경우)
+      if (response.data.character_stolen) {
+        if (won) {
           alert("🏆 상대방의 캐릭터를 뺏었습니다! 마이페이지에서 확인하세요.");
+        } else {
+          alert("💔 호감도가 0이 되어 캐릭터를 뺏겼습니다...");
         }
-        // 엔딩 페이지로 이동
-        router.push(`/ending/${sessionId}?type=${response.data.ending_type}`);
-        return;
       }
 
       // 승리 시 이벤트 씬 표시 (엔딩이 아닌 경우만)
@@ -245,6 +273,7 @@ export default function GamePage() {
     } catch (error) {
       console.error("Failed to submit PvP result:", error);
     } finally {
+      setIsTransitioning(false);
       setPendingEventData(null);
       resetPvP();
     }

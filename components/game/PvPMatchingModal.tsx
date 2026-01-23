@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePvPStore } from "@/store/usePvPStore";
 
@@ -38,6 +38,9 @@ export default function PvPMatchingModal({
 
   const [isJoining, setIsJoining] = useState(false);
 
+  // 매칭 성공 여부 추적 (한 번 매칭되면 타임아웃/에러 처리 방지)
+  const hasMatchedRef = useRef(false);
+
   // 초기 "특별 이벤트 발생!" 문구를 2초 후 숨김
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -62,16 +65,27 @@ export default function PvPMatchingModal({
 
   // 30초 카운트다운 및 타임아웃 처리
   useEffect(() => {
+    // 매칭 성공 시에는 카운트다운 중지
+    if (hasMatchedRef.current) {
+      return;
+    }
+
     if (status !== "queue_joined" && status !== "matching") {
       return;
     }
 
     const interval = setInterval(() => {
+      // 매칭 성공 시 카운트다운 중지
+      if (hasMatchedRef.current) {
+        clearInterval(interval);
+        return;
+      }
+
       const newSeconds = remainingSeconds - 1;
       setRemainingSeconds(newSeconds);
 
       // 타임아웃: 0초가 되면 솔로 미니게임으로 전환
-      if (newSeconds <= 0) {
+      if (newSeconds <= 0 && !hasMatchedRef.current) {
         clearInterval(interval);
         // 매칭 큐에서 나가고 타임아웃 처리
         leaveQueue();
@@ -85,24 +99,28 @@ export default function PvPMatchingModal({
   // 매칭 성공 처리
   useEffect(() => {
     if (status === "matched" && opponentSessionId && opponentBet !== null) {
+      hasMatchedRef.current = true;  // 매칭 성공 표시 (타임아웃 방지)
       const finalBet = Math.max(betAmount, opponentBet);
       onMatchSuccess(opponentSessionId, finalBet);
     }
   }, [status, opponentSessionId, opponentBet, betAmount, onMatchSuccess]);
 
-  // 타임아웃 처리
+  // 타임아웃 처리 (매칭 성공 시에는 무시)
   useEffect(() => {
-    if (status === "timeout") {
+    if (status === "timeout" && !hasMatchedRef.current) {
       onTimeout();
     }
   }, [status, onTimeout]);
 
-  // 연결 에러 시 자동으로 솔로 미니게임으로 전환 (3초 후)
+  // 연결 에러 시 자동으로 솔로 미니게임으로 전환 (2초 후)
+  // 단, 이미 매칭 성공한 경우에는 무시
   useEffect(() => {
-    if (status === "error" || status === "disconnected") {
+    if ((status === "error" || status === "disconnected") && !hasMatchedRef.current) {
       const timer = setTimeout(() => {
-        onTimeout();
-      }, 2000); // 2초 후 자동 전환
+        if (!hasMatchedRef.current) {
+          onTimeout();
+        }
+      }, 2000);
       return () => clearTimeout(timer);
     }
   }, [status, onTimeout]);
