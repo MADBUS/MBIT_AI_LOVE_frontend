@@ -85,7 +85,7 @@ export default function GamePage() {
   } | null>(null);
 
   // PvP 스토어
-  const { status: pvpStatus, pvpResult, reset: resetPvP } = usePvPStore();
+  const { status: pvpStatus, pvpResult, betAmount: pvpBetAmount, opponentBet: pvpOpponentBet, reset: resetPvP } = usePvPStore();
 
   // 씬 전환 중 상태 (로딩 화면 없이 부드러운 전환)
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -192,11 +192,19 @@ export default function GamePage() {
     console.log("[GamePage] PvP Game ended, won:", won);
     setShowPvPGame(false);
 
+    // PvP 베팅 금액 계산 (양쪽 중 높은 금액)
+    const finalBet = Math.max(pvpBetAmount || 10, pvpOpponentBet || 10);
+    console.log("[GamePage] PvP bet amount:", finalBet, "won:", won);
+
     // 결과에 따른 호감도 변화 적용
     try {
       const response = await api.post<MinigameResultResponse>(
         `/scenes/${sessionId}/minigame-result`,
-        { success: won }
+        {
+          success: won,
+          is_pvp: true,
+          bet_amount: finalBet
+        }
       );
 
       // 호감도 업데이트

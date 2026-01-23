@@ -50,8 +50,13 @@ export default function PvPMatchingModal({
   useEffect(() => {
     connect(sessionId);
 
+    // cleanup: 매칭 성공 시에는 disconnect하지 않음 (게임 계속 진행)
     return () => {
-      disconnect();
+      const currentStatus = usePvPStore.getState().status;
+      // 매칭 성공이나 게임 진행 중이 아닐 때만 disconnect
+      if (currentStatus !== "matched" && currentStatus !== "playing") {
+        disconnect();
+      }
     };
   }, [sessionId, connect, disconnect]);
 
