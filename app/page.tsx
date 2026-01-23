@@ -250,7 +250,7 @@ export default function Home() {
                     onClick={handleContinue}
                     className="px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-full text-xl font-semibold shadow-lg hover:shadow-xl transition-all w-full"
                   >
-                    이어하기 (Scene {activeGame.current_scene}/10)
+                    이어하기 (Scene {activeGame.current_scene})
                   </motion.button>
                   <motion.button
                     whileHover={{ scale: 1.03 }}

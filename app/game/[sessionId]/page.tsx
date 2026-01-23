@@ -12,6 +12,8 @@ import CharacterVideoPlayer from "@/components/game/CharacterVideoPlayer";
 import HeartMinigame from "@/components/game/HeartMinigame";
 import SpecialEventModal from "@/components/game/SpecialEventModal";
 import PvPMatchingModal from "@/components/game/PvPMatchingModal";
+import PvPGameManager from "@/components/game/pvp/PvPGameManager";
+import { usePvPStore } from "@/store/usePvPStore";
 
 interface Scene {
   scene_number: number;
@@ -75,10 +77,15 @@ export default function GamePage() {
 
   // PvP 매칭 관련 상태
   const [showPvPMatching, setShowPvPMatching] = useState(false);
+  const [showPvPGame, setShowPvPGame] = useState(false);
+  const [partnerGender, setPartnerGender] = useState<"male" | "female">("female");
   const [pendingEventData, setPendingEventData] = useState<{
     imageUrl: string;
     description: string;
   } | null>(null);
+
+  // PvP 스토어
+  const { status: pvpStatus, pvpResult, reset: resetPvP } = usePvPStore();
 
   // 씬 전환 중 상태 (로딩 화면 없이 부드러운 전환)
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -97,12 +104,27 @@ export default function GamePage() {
       }
       setExpressions(expressionMap);
       console.log("[GamePage] Expressions loaded:", expressionMap);
+
+      // 캐릭터 성별 정보도 가져오기
+      const sessionResponse = await api.get(`/games/${sessionId}`);
+      if (sessionResponse.data.character_setting?.gender) {
+        setPartnerGender(sessionResponse.data.character_setting.gender);
+      }
     } catch (error) {
       console.error("Failed to load expressions:", error);
     } finally {
       setExpressionsLoading(false);
     }
   }, [sessionId]);
+
+  // PvP 상태 감시 - 매칭 성공 시 게임 시작
+  useEffect(() => {
+    if (pvpStatus === "matched" && !showPvPGame) {
+      console.log("[GamePage] PvP matched, starting game");
+      setShowPvPMatching(false);
+      setShowPvPGame(true);
+    }
+  }, [pvpStatus, showPvPGame]);
 
   const loadScene = async (showLoading = false) => {
     try {
@@ -161,15 +183,44 @@ export default function GamePage() {
   const handlePvPMatchSuccess = (opponentSessionId: string, finalBet: number) => {
     console.log("[GamePage] PvP Match success:", opponentSessionId, finalBet);
     setShowPvPMatching(false);
-    // TODO: PvP 대전 로직 구현
-    // 지금은 솔로 미니게임으로 전환
-    if (pendingEventData) {
-      setEventData({
-        imageUrl: pendingEventData.imageUrl,
-        description: "PvP 대전!",
-        affectionChange: 0,
-      });
-      setShowMinigame(true);
+    // PvP 미니게임 표시
+    setShowPvPGame(true);
+  };
+
+  // PvP 게임 종료 처리
+  const handlePvPGameEnd = async (won: boolean) => {
+    console.log("[GamePage] PvP Game ended, won:", won);
+    setShowPvPGame(false);
+
+    // 결과에 따른 호감도 변화 적용
+    try {
+      const response = await api.post<MinigameResultResponse>(
+        `/scenes/${sessionId}/minigame-result`,
+        { success: won }
+      );
+
+      // 호감도 업데이트
+      if (scene) {
+        setScene({
+          ...scene,
+          affection: response.data.new_affection,
+        });
+      }
+
+      // 승리 시 이벤트 씬 표시
+      if (won && pendingEventData && response.data.show_event_scene) {
+        setEventData({
+          imageUrl: pendingEventData.imageUrl,
+          description: pendingEventData.description,
+          affectionChange: response.data.affection_change,
+        });
+        setShowEventModal(true);
+      }
+    } catch (error) {
+      console.error("Failed to submit PvP result:", error);
+    } finally {
+      setPendingEventData(null);
+      resetPvP();
     }
   };
 
@@ -330,6 +381,14 @@ export default function GamePage() {
           onMatchSuccess={handlePvPMatchSuccess}
           onTimeout={handlePvPTimeout}
           onClose={handlePvPClose}
+        />
+      )}
+
+      {/* PvP 미니게임 */}
+      {showPvPGame && (
+        <PvPGameManager
+          partnerGender={partnerGender}
+          onGameEnd={handlePvPGameEnd}
         />
       )}
 

@@ -8,9 +8,13 @@ type MatchingStatus =
   | "queue_joined"   // 매칭 큐 참가
   | "matching"       // 매칭 진행 중
   | "matched"        // 매칭 성공
+  | "playing"        // 게임 진행 중
   | "timeout"        // 타임아웃
   | "disconnected"   // 연결 끊김
   | "error";         // 에러
+
+// PvP 미니게임 타입
+export type PvPGameType = "shell" | "chase" | "mashing";
 
 // PvP 결과 타입
 interface PvPResult {
@@ -32,6 +36,20 @@ interface MinigameDifficulty {
   heartDurationMax: number;
 }
 
+// 게임 상태
+interface GameState {
+  // Shell Game (야바위)
+  opponentHover: number | null;
+  opponentSelected: number | null;
+
+  // Chase Game (나잡아봐라)
+  opponentPosition: number;
+  opponentHits: number;
+
+  // Mashing Game (스페이스바 광클)
+  opponentScore: number;
+}
+
 interface PvPState {
   // WebSocket 연결 상태
   socket: WebSocket | null;
@@ -46,6 +64,13 @@ interface PvPState {
   // 상대방 정보
   opponentSessionId: string | null;
   opponentBet: number | null;
+
+  // 게임 관련
+  roomId: string | null;
+  gameType: PvPGameType | null;
+  isHost: boolean;
+  correctCup: number | null;  // 야바위용
+  gameState: GameState;
 
   // 결과
   pvpResult: PvPResult | null;
@@ -67,9 +92,21 @@ interface PvPState {
   setPvPResult: (result: PvPResult | null) => void;
   setSoloMinigame: (trigger: boolean, difficulty?: MinigameDifficulty) => void;
   reset: () => void;
+
+  // 게임 액션
+  sendGameAction: (action: string, payload: Record<string, unknown>) => void;
+  startGame: () => void;
 }
 
 const WEBSOCKET_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+
+const initialGameState: GameState = {
+  opponentHover: null,
+  opponentSelected: null,
+  opponentPosition: 1,
+  opponentHits: 0,
+  opponentScore: 0,
+};
 
 export const usePvPStore = create<PvPState>((set, get) => ({
   // 초기 상태
@@ -81,6 +118,11 @@ export const usePvPStore = create<PvPState>((set, get) => ({
   remainingSeconds: 30,
   opponentSessionId: null,
   opponentBet: null,
+  roomId: null,
+  gameType: null,
+  isHost: false,
+  correctCup: null,
+  gameState: { ...initialGameState },
   pvpResult: null,
   triggerSoloMinigame: false,
   soloMinigameDifficulty: null,
@@ -135,7 +177,34 @@ export const usePvPStore = create<PvPState>((set, get) => ({
               status: "matched",
               opponentSessionId: data.opponent_session_id,
               opponentBet: data.opponent_bet,
+              roomId: data.room_id,
+              gameType: data.game_type,
+              isHost: data.is_host,
+              correctCup: data.correct_cup,
+              gameState: { ...initialGameState },
             });
+            break;
+
+          case "game_update":
+            // 상대방 게임 상태 업데이트
+            const { gameState } = get();
+            switch (data.game_action) {
+              case "opponent_hover":
+                set({ gameState: { ...gameState, opponentHover: data.cup_index } });
+                break;
+              case "opponent_select":
+                set({ gameState: { ...gameState, opponentSelected: data.cup_index } });
+                break;
+              case "opponent_position":
+                set({ gameState: { ...gameState, opponentPosition: data.position } });
+                break;
+              case "opponent_hit":
+                set({ gameState: { ...gameState, opponentHits: data.hits } });
+                break;
+              case "opponent_score":
+                set({ gameState: { ...gameState, opponentScore: data.score } });
+                break;
+            }
             break;
 
           case "timeout":
@@ -271,10 +340,37 @@ export const usePvPStore = create<PvPState>((set, get) => ({
       remainingSeconds: 30,
       opponentSessionId: null,
       opponentBet: null,
+      roomId: null,
+      gameType: null,
+      isHost: false,
+      correctCup: null,
+      gameState: { ...initialGameState },
       pvpResult: null,
       triggerSoloMinigame: false,
       soloMinigameDifficulty: null,
       error: null,
     });
+  },
+
+  // 게임 액션 전송
+  sendGameAction: (action: string, payload: Record<string, unknown>) => {
+    const { socket, roomId } = get();
+
+    if (!socket || !roomId) {
+      console.error("[PvP] Cannot send game action: not in a game");
+      return;
+    }
+
+    socket.send(JSON.stringify({
+      action: "game_action",
+      room_id: roomId,
+      game_action: action,
+      payload,
+    }));
+  },
+
+  // 게임 시작
+  startGame: () => {
+    set({ status: "playing" });
   },
 }));

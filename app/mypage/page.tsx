@@ -206,7 +206,7 @@ export default function MyPage() {
                             )}
                           </div>
                           <div className="text-sm text-gray-500">
-                            Scene {game.current_scene}/10 | 호감도 {game.affection}%
+                            Scene {game.current_scene} | 호감도 {game.affection}%
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
