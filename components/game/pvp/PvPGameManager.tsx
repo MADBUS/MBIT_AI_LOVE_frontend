@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { usePvPStore, PvPGameType } from "@/store/usePvPStore";
 import PvPMinigameRoulette from "./PvPMinigameRoulette";
 import ShellGame from "./ShellGame";
@@ -22,19 +22,40 @@ export default function PvPGameManager({
     isHost,
     correctCup,
     gameState,
+    pvpResult,
     sendGameAction,
     startGame,
   } = usePvPStore();
 
   const [showRoulette, setShowRoulette] = useState(true);
   const [currentGame, setCurrentGame] = useState<PvPGameType | null>(null);
+  const hasHandledResult = useRef(false);
 
   // 매칭 성공 시 룰렛 표시
   useEffect(() => {
     if (status === "matched" && gameType) {
       setShowRoulette(true);
+      hasHandledResult.current = false;
     }
   }, [status, gameType]);
+
+  // PvP 결과 감시 (상대방 연결 끊김 등)
+  useEffect(() => {
+    if (pvpResult && !hasHandledResult.current) {
+      hasHandledResult.current = true;
+      console.log("[PvPGameManager] PvP result received:", pvpResult);
+      onGameEnd(pvpResult.status === "win");
+    }
+  }, [pvpResult, onGameEnd]);
+
+  // WebSocket 연결 끊김 감시
+  useEffect(() => {
+    if ((status === "disconnected" || status === "error") && currentGame && !hasHandledResult.current) {
+      console.log("[PvPGameManager] WebSocket disconnected during game, treating as loss");
+      hasHandledResult.current = true;
+      onGameEnd(false);
+    }
+  }, [status, currentGame, onGameEnd]);
 
   // 룰렛 완료 시 게임 시작
   const handleRouletteComplete = useCallback((selectedGame: PvPGameType) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export type PvPMinigameType = "shell" | "chase" | "mashing";
@@ -37,9 +37,14 @@ export default function PvPMinigameRoulette({ targetGame, onGameSelected }: PvPM
   const [showResult, setShowResult] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const spinCountRef = useRef(0);
+  const hasCalledCallback = useRef(false);
 
-  // 서버에서 결정된 게임의 인덱스 찾기
-  const targetIndex = MINIGAMES.findIndex((g) => g.type === targetGame);
+  // 콜백을 ref로 저장하여 의존성에서 제거
+  const onGameSelectedRef = useRef(onGameSelected);
+  onGameSelectedRef.current = onGameSelected;
+
+  // 서버에서 결정된 게임의 인덱스 찾기 (찾지 못하면 0)
+  const targetIndex = Math.max(0, MINIGAMES.findIndex((g) => g.type === targetGame));
 
   // 룰렛 회전 효과
   useEffect(() => {
@@ -61,9 +66,12 @@ export default function PvPMinigameRoulette({ targetGame, onGameSelected }: PvPM
         // 잠시 후 결과 표시
         setTimeout(() => {
           setShowResult(true);
-          // 게임 선택 콜백 호출
+          // 게임 선택 콜백 호출 (한 번만)
           setTimeout(() => {
-            onGameSelected(targetGame);
+            if (!hasCalledCallback.current) {
+              hasCalledCallback.current = true;
+              onGameSelectedRef.current(targetGame);
+            }
           }, 1500);
         }, 500);
         return;
@@ -84,9 +92,10 @@ export default function PvPMinigameRoulette({ targetGame, onGameSelected }: PvPM
         clearTimeout(intervalRef.current);
       }
     };
-  }, [spinning, targetGame, targetIndex, onGameSelected]);
+  }, [spinning, targetGame, targetIndex]);
 
-  const currentGame = MINIGAMES[currentIndex];
+  // currentIndex가 유효한지 확인
+  const currentGame = MINIGAMES[currentIndex] || MINIGAMES[0];
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
