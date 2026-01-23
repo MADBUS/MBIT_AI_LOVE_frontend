@@ -382,20 +382,32 @@ export default function GamePage() {
             />
           </div>
 
-          {/* 대사 */}
+          {/* 캐릭터 대사 */}
           <motion.div
             key={scene.scene_number}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-2xl p-6 mb-6 shadow-md"
+            className="relative bg-gradient-to-br from-white to-pink-50 rounded-2xl p-5 mb-6 shadow-md border-l-4 border-pink-400"
           >
-            <p className="text-lg text-gray-800 leading-relaxed">
+            {/* 캐릭터 말풍선 표시 */}
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">💬</span>
+              <span className="text-sm font-semibold text-pink-500">상대방</span>
+            </div>
+            <p className="text-lg text-gray-800 leading-relaxed pl-1">
               {scene.dialogue}
             </p>
+            {/* 말풍선 꼬리 */}
+            <div className="absolute -top-2 left-8 w-4 h-4 bg-gradient-to-br from-white to-pink-50 transform rotate-45 border-l border-t border-pink-100" />
           </motion.div>
 
-          {/* 선택지 */}
+          {/* 사용자 선택지 */}
           <div className="space-y-3">
+            {/* 선택지 헤더 */}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">👆</span>
+              <span className="text-sm font-semibold text-purple-600">나의 반응 선택</span>
+            </div>
             <AnimatePresence mode="sync">
               {scene.choices.map((choice, index) => (
                 <motion.div
