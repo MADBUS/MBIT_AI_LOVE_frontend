@@ -189,8 +189,17 @@ export default function MyPage() {
                     <motion.div
                       key={game.id}
                       whileHover={{ scale: 1.01 }}
-                      className="bg-gray-50 rounded-xl p-4 cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => router.push(`/game/${game.id}`)}
+                      className={`bg-gray-50 rounded-xl p-4 transition-colors ${
+                        game.status === "playing" ? "cursor-pointer hover:bg-gray-100" : "opacity-80"
+                      }`}
+                      onClick={() => {
+                        if (game.status === "playing") {
+                          router.push(`/game/${game.id}`);
+                        } else {
+                          // 엔딩된 게임은 엔딩 페이지로 이동
+                          router.push(`/ending/${game.id}?type=${game.status}`);
+                        }
+                      }}
                     >
                       <div className="flex justify-between items-center">
                         <div>
@@ -200,6 +209,7 @@ export default function MyPage() {
                                 {STYLE_OPTIONS.find(s => s.value === game.character_settings?.style)?.label || game.character_settings.style}
                                 {" "}
                                 ({game.character_settings.mbti})
+                                {game.is_stolen && <span className="ml-2 text-xs text-purple-500">🏆 뺏은 캐릭터</span>}
                               </>
                             ) : (
                               "캐릭터 미설정"
@@ -219,7 +229,11 @@ export default function MyPage() {
                           }`}>
                             {game.status === "playing" ? "진행중" : game.status === "happy_ending" ? "해피엔딩" : "배드엔딩"}
                           </span>
-                          <span className="text-primary font-medium">이어하기 &rarr;</span>
+                          {game.status === "playing" ? (
+                            <span className="text-primary font-medium">이어하기 &rarr;</span>
+                          ) : (
+                            <span className="text-gray-400 font-medium">엔딩 보기 &rarr;</span>
+                          )}
                         </div>
                       </div>
                     </motion.div>

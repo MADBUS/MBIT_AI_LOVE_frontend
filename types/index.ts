@@ -40,6 +40,10 @@ export interface GameSession {
   created_at: string;
   updated_at?: string;
   character_settings?: CharacterSetting | null;
+  // PvP 캐릭터 뺏기 관련
+  is_stolen?: boolean;
+  original_owner_id?: string | null;
+  stolen_from_session_id?: string | null;
 }
 
 // MBTI types

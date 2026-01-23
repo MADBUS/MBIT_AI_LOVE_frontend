@@ -50,6 +50,12 @@ interface MinigameResultResponse {
   new_affection: number;
   message: string;
   show_event_scene: boolean;  // true only when minigame success
+  // 엔딩 관련
+  game_ended: boolean;
+  ending_type: "happy_ending" | "sad_ending" | null;
+  // 캐릭터 뺏김 관련 (PvP)
+  character_stolen: boolean;
+  stolen_character_id: string | null;
 }
 
 export default function GamePage() {
@@ -85,7 +91,7 @@ export default function GamePage() {
   } | null>(null);
 
   // PvP 스토어
-  const { status: pvpStatus, pvpResult, betAmount: pvpBetAmount, opponentBet: pvpOpponentBet, reset: resetPvP } = usePvPStore();
+  const { status: pvpStatus, pvpResult, betAmount: pvpBetAmount, opponentBet: pvpOpponentBet, opponentSessionId: pvpOpponentSessionId, reset: resetPvP } = usePvPStore();
 
   // 씬 전환 중 상태 (로딩 화면 없이 부드러운 전환)
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -194,7 +200,7 @@ export default function GamePage() {
 
     // PvP 베팅 금액 계산 (양쪽 중 높은 금액)
     const finalBet = Math.max(pvpBetAmount || 10, pvpOpponentBet || 10);
-    console.log("[GamePage] PvP bet amount:", finalBet, "won:", won);
+    console.log("[GamePage] PvP bet amount:", finalBet, "won:", won, "opponent:", pvpOpponentSessionId);
 
     // 결과에 따른 호감도 변화 적용
     try {
@@ -203,7 +209,8 @@ export default function GamePage() {
         {
           success: won,
           is_pvp: true,
-          bet_amount: finalBet
+          bet_amount: finalBet,
+          opponent_session_id: pvpOpponentSessionId || null,
         }
       );
 
@@ -215,7 +222,18 @@ export default function GamePage() {
         });
       }
 
-      // 승리 시 이벤트 씬 표시
+      // 엔딩 체크
+      if (response.data.game_ended && response.data.ending_type) {
+        // 캐릭터 뺏김 알림 (승리 + 상대방 캐릭터 뺏음)
+        if (response.data.character_stolen) {
+          alert("🏆 상대방의 캐릭터를 뺏었습니다! 마이페이지에서 확인하세요.");
+        }
+        // 엔딩 페이지로 이동
+        router.push(`/ending/${sessionId}?type=${response.data.ending_type}`);
+        return;
+      }
+
+      // 승리 시 이벤트 씬 표시 (엔딩이 아닌 경우만)
       if (won && pendingEventData && response.data.show_event_scene) {
         setEventData({
           imageUrl: pendingEventData.imageUrl,
